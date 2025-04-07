@@ -65,7 +65,7 @@ def download_file(project_id: str, bucket_name: str):
             # Listar arquivos dentro do ZIP
             logging.info("Arquivos dentro do ZIP:")
             for file in zip_ref.namelist():
-                logging.infot(f"- {file}")
+                logging.info(f"- {file}")
             
             # Verificar se há arquivos
             if not zip_ref.namelist():
@@ -100,10 +100,10 @@ def download_file(project_id: str, bucket_name: str):
         logging.error(f"Ocorreu um erro inesperado: {e}")
         return False
     
-
-def add_bom_csv(bucket_name, project_id, folder_path):
+# Add BOM CSV
+def add_bom_csv(bucket_name: str, project_id: str, folder_path: str):
     """
-    Procura o arquivo 'part-*.csv' na pasta do GCS, adiciona BOM e regrava na pasta raw.
+    Procura o arquivo 'part-*.csv' na pasta do GCS, adiciona BOM e sobrescreve o arquivo original.
     Utiliza a classe GCSClient para as operações com o Google Cloud Storage.
     
     Args:
@@ -117,7 +117,7 @@ def add_bom_csv(bucket_name, project_id, folder_path):
     """
     try:
         # Inicializa o cliente GCS
-        gcs_client = GCSClient(project_name=project_id, bucket_name=bucket_name)
+        gcs_client = GCSClient(project_id=project_id, bucket_name=bucket_name)
         
         logging.info(f"🔍 Procurando arquivo CSV em: gs://{bucket_name}/{folder_path}")
         
@@ -142,21 +142,24 @@ def add_bom_csv(bucket_name, project_id, folder_path):
             content_bytes = target_blob.download_as_bytes()
             logging.info(f"📥 Arquivo baixado ({len(content_bytes)} bytes)")
 
+            # Verificar se já tem BOM
+            if content_bytes.startswith(codecs.BOM_UTF8):
+                logging.info("ℹ️ O arquivo já contém BOM UTF-8. Nenhuma modificação necessária.")
+                return
+
             # Adicionar BOM no início
             content_with_bom = codecs.BOM_UTF8 + content_bytes
 
-            # Definir o novo caminho na pasta raw
-            raw_blob_name = target_blob.name.replace(folder_path, "raw/")
+            # Fazer upload para o mesmo local, substituindo o arquivo original
+            logging.info(f"⬆️ Preparando upload para substituir o arquivo original")
             
-            logging.info(f"⬆️ Preparando upload para: gs://{bucket_name}/{raw_blob_name}")
-            
-            # Fazer upload para a pasta raw usando o GCSClient
+            # Fazer upload para o mesmo caminho usando o GCSClient
             gcs_client.upload_to_gcs(
-                destination_blob_name=raw_blob_name,
+                destination_blob_name=target_blob.name,  # Mesmo caminho original
                 file_content=content_with_bom
             )
 
-            logging.info(f"✅ Arquivo processado com sucesso! Salvo em: gs://{bucket_name}/{raw_blob_name}")
+            logging.info(f"✅ Arquivo processado com sucesso! BOM adicionado e arquivo substituído em: gs://{bucket_name}/{target_blob.name}")
 
         except GoogleAPIError as e:
             logging.error(f"🚨 Erro ao processar o arquivo {target_blob.name}: {str(e)}")
@@ -171,8 +174,6 @@ def add_bom_csv(bucket_name, project_id, folder_path):
     except Exception as e:
         logging.error(f"🚨 Erro inesperado: {str(e)}")
         raise
-
-
 
 # if __name__ == "__main__":
 #     # Configurações do projeto e bucket
